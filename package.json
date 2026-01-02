@@ -5,17 +5,12 @@
   "type": "module",
   "description": "Enterprise-grade Multi-Vendor Management Information System (MMIS) with AI-powered BI, real-time analytics, and spatial logistics tracking.",
   "author": "MMIS Team / Tevas UG",
-  "engines": {
-    "node": "20.x",
-    "npm": "10.x"
-  },
   "scripts": {
     "dev": "vite",
-    "build": "npm run clean && tsc && vite build",
+    "build": "vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "format": "prettier --write \"**/*.{ts,tsx,css,md}\"",
-    "clean": "rimraf dist",
     "type-check": "tsc --noEmit",
     "audit": "npm audit --audit-level=high"
   },
