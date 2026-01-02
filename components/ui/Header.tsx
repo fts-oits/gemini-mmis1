@@ -77,7 +77,6 @@ export const Header = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Comprehensive Registry Mock Data with expanded fields for fuzzy search
   const registryMock = useMemo(() => [
     { type: 'VENDOR', name: 'Global Tech Solution', id: 'V-001', category: 'Registry Nodes', icon: Store, target: 'Vendors', status: 'Active' },
     { type: 'VENDOR', name: 'Fresh Foods Co.', id: 'V-002', category: 'Registry Nodes', icon: Store, target: 'Vendors', status: 'Active' },
@@ -88,7 +87,7 @@ export const Header = ({
     { type: 'ORDER', name: 'ORD-1001 (Maize Flour)', id: 'O-001', category: 'Order Manifests', icon: ShoppingCart, target: 'Orders', status: 'Pending' },
     { type: 'ORDER', name: 'ORD-1002 (Cooking Oil)', id: 'O-002', category: 'Order Manifests', icon: ShoppingCart, target: 'Orders', status: 'Shipped' },
     { type: 'ORDER', name: 'ORD-8821 (Industrial Salt)', id: 'O-003', category: 'Order Manifests', icon: ShoppingCart, target: 'Orders', status: 'Delivered' },
-    { type: 'LOGISTICS', name: 'Weekly Bridge W21', id: 'L-001', category: 'Logistics', icon: Truck, target: 'Supply Requisitions', status: 'En Route' },
+    { type: 'LOGISTICS', name: 'Weekly Bridge W21', id: 'L-001', category: 'Logistics Hub', icon: Truck, target: 'Supply Requisitions', status: 'En Route' },
     { type: 'MODULE', name: 'Revenue Analytics', id: 'MOD-REV', category: 'System Modules', icon: LayoutGrid, target: 'Revenue Module' },
     { type: 'MODULE', name: 'Security Console', id: 'MOD-SEC', category: 'System Modules', icon: FileText, target: 'Security Console' },
   ], []);
@@ -97,38 +96,25 @@ export const Header = ({
     const q = searchQuery.trim().toLowerCase();
     if (q.length < 1) return [];
     
-    // Advanced Scoring Logic
     const scoredResults = registryMock.map(item => {
       let score = 0;
       const name = item.name.toLowerCase();
       const id = item.id.toLowerCase();
       const sub = (item.sub || '').toLowerCase();
 
-      // 1. Exact Match (Highest Priority)
-      if (name === q || id === q) score += 100;
-      
-      // 2. Starts With (High Priority)
-      else if (name.startsWith(q) || id.startsWith(q)) score += 80;
-      
-      // 3. Contains (Medium Priority)
-      else if (name.includes(q) || id.includes(q) || sub.includes(q)) score += 60;
-      
-      // 4. Levenshtein Fuzzy Match (Typo Tolerance)
+      // 1. Exact Match Priority
+      if (name === q || id === q) score += 1000;
+      else if (name.startsWith(q) || id.startsWith(q)) score += 500;
+      else if (name.includes(q) || id.includes(q) || sub.includes(q)) score += 200;
       else {
         const dist = levenshteinDistance(name, q);
         const maxLength = Math.max(name.length, q.length);
         const similarity = 1 - dist / maxLength;
-        
-        // Threshold for fuzzy match (e.g., 60% similarity)
-        if (similarity > 0.6) {
-          score += 40 * similarity;
-        }
+        if (similarity > 0.5) score += 100 * similarity;
       }
-
       return { ...item, score };
     }).filter(item => item.score > 0).sort((a, b) => b.score - a.score);
 
-    // Grouping by category
     return scoredResults.reduce((acc, current) => {
       const group = acc.find((g: any) => g.category === current.category);
       if (group) {
@@ -214,7 +200,7 @@ export const Header = ({
                                   <div className="flex items-center gap-3">
                                     <div className="w-9 h-9 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center group-hover:bg-white dark:group-hover:bg-slate-700 transition-colors shadow-sm relative">
                                       <item.icon size={16} className="text-slate-400 dark:text-slate-50" />
-                                      {item.score >= 100 && (
+                                      {item.score >= 1000 && (
                                         <div className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full w-3 h-3 flex items-center justify-center">
                                           <Sparkles size={8} />
                                         </div>
@@ -223,7 +209,7 @@ export const Header = ({
                                     <div className="flex flex-col">
                                       <span className="font-black truncate flex items-center gap-2">
                                         {item.name}
-                                        {item.score >= 100 && <span className="text-[8px] bg-emerald-100 text-emerald-600 px-1.5 rounded uppercase tracking-widest">Exact</span>}
+                                        {item.score >= 1000 && <span className="text-[8px] bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-1.5 rounded uppercase tracking-widest">Exact Match</span>}
                                       </span>
                                       <span className="text-[9px] opacity-40 font-mono tracking-tighter flex items-center gap-2">
                                         {item.id}

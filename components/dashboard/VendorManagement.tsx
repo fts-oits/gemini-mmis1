@@ -9,7 +9,7 @@ import {
   ArrowUpDown, Filter, Ban, Banknote, XCircle, Package,
   Plus, Edit, Trash2, Image as ImageIcon, Upload, LayoutGrid,
   ChevronLeft, ChevronRight, Zap, Star, ListFilter, Tag,
-  ChevronDown
+  ChevronDown, AlertCircle, UserCheck
 } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
@@ -57,6 +57,7 @@ export const VendorManagement = ({ user }: { user: UserProfile }) => {
   
   // Bulk Action State
   const [selectedVendorIds, setSelectedVendorIds] = useState<Set<string>>(new Set());
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
   const [bulkAction, setBulkAction] = useState<'ACTIVATE' | 'DEACTIVATE' | null>(null);
   
   const [viewingVendor, setViewingVendor] = useState<Vendor | null>(null);
@@ -97,11 +98,20 @@ export const VendorManagement = ({ user }: { user: UserProfile }) => {
   };
 
   const filteredVendors = useMemo(() => {
+    // Enhancement: Tokenized search splitting input into multiple terms for effective matching
+    const searchTerms = search.toLowerCase().trim().split(/\s+/).filter(t => t.length > 0);
+
     let result = vendors.filter(v => {
-      const matchSearch = v.name.toLowerCase().includes(search.toLowerCase()) || 
-                          v.email.toLowerCase().includes(search.toLowerCase()) ||
-                          v.id.toLowerCase().includes(search.toLowerCase()) ||
-                          v.category.toLowerCase().includes(search.toLowerCase());
+      // Logic: Ensure every term in the search query matches at least one primary field
+      const matchSearch = searchTerms.every(term => 
+        v.name.toLowerCase().includes(term) || 
+        v.email.toLowerCase().includes(term) ||
+        v.id.toLowerCase().includes(term) ||
+        v.category.toLowerCase().includes(term) ||
+        v.market.toLowerCase().includes(term) ||
+        v.city.toLowerCase().includes(term)
+      );
+
       const matchCategory = categoryFilter === 'ALL' || v.category === categoryFilter;
       const matchStatus = statusFilter === 'ALL' || v.status === statusFilter;
       const matchDues = !showDuesOnly || (v.rentDue + v.vatDue > 0);
@@ -137,66 +147,19 @@ export const VendorManagement = ({ user }: { user: UserProfile }) => {
     return result;
   }, [vendors, search, categoryFilter, statusFilter, showDuesOnly, sortConfig]);
 
+  const executeBulkAction = () => {
+    if (!bulkAction) return;
+    const newStatus = bulkAction === 'ACTIVATE' ? 'ACTIVE' : 'INACTIVE';
+    setVendors(prev => prev.map(v => 
+      selectedVendorIds.has(v.id) ? { ...v, status: newStatus } : v
+    ));
+    setSelectedVendorIds(new Set());
+    setShowBulkConfirm(false);
+    setBulkAction(null);
+  };
+
   const handleKYCEscalate = (vendor: Vendor, status: 'APPROVED' | 'REJECTED' | 'SUBMITTED' | 'PENDING') => {
     setVendors(prev => prev.map(v => v.id === vendor.id ? { ...v, kycStatus: status } : v));
-  };
-
-  const handleRateVendor = () => {
-    if (!ratingTarget) return;
-    setVendors(prev => prev.map(v => {
-      if (v.id === ratingTarget.id) {
-        const count = (v.ratingCount || 0) + 1;
-        const currentRating = v.rating || 0;
-        const newRating = ((currentRating * (count - 1)) + ratingValue) / count;
-        return { ...v, rating: Number(newRating.toFixed(1)), ratingCount: count };
-      }
-      return v;
-    }));
-    setShowRatingModal(false);
-    setRatingTarget(null);
-    setRatingComment('');
-  };
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const filesArray = Array.from(e.target.files);
-      const newImages = filesArray.map((file: any) => URL.createObjectURL(file));
-      setProductForm(prev => ({ ...prev, images: [...(prev.images || []), ...newImages] }));
-    }
-  };
-
-  const moveImage = (index: number, direction: number) => {
-    if (!productForm.images) return;
-    const newImages = [...productForm.images];
-    if (index + direction < 0 || index + direction >= newImages.length) return;
-    const temp = newImages[index];
-    newImages[index] = newImages[index + direction];
-    newImages[index + direction] = temp;
-    setProductForm(prev => ({ ...prev, images: newImages }));
-  };
-
-  const removeImage = (index: number) => {
-    setProductForm(prev => ({
-      ...prev,
-      images: prev.images?.filter((_, i) => i !== index)
-    }));
-  };
-
-  const handleProductSave = () => {
-    if (editingProduct) {
-      setMyProducts(myProducts.map(p => p.id === editingProduct.id ? { ...p, ...productForm } as Product : p));
-    } else {
-      const newProduct: Product = {
-        ...productForm as Product,
-        id: 'P-' + Math.floor(Math.random() * 9000),
-        vendor: user.name,
-        status: 'HEALTHY'
-      };
-      setMyProducts([newProduct, ...myProducts]);
-    }
-    setShowProductModal(false);
-    setProductForm({ name: '', price: 0, stock: 0, category: 'General', description: '', images: [] });
-    setEditingProduct(null);
   };
 
   const handleSelectAll = () => {
@@ -269,8 +232,8 @@ export const VendorManagement = ({ user }: { user: UserProfile }) => {
                  <span className="bg-white/20 px-3 py-1 rounded-lg text-xs font-black">{selectedVendorIds.size} Selected</span>
                </div>
                <div className="flex gap-2">
-                 <button onClick={() => setBulkAction('ACTIVATE')} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 transition-colors"><CheckCircle2 size={14}/> Activate</button>
-                 <button onClick={() => setBulkAction('DEACTIVATE')} className="px-4 py-2 bg-red-500 hover:bg-red-400 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 transition-colors"><Ban size={14}/> Deactivate</button>
+                 <button onClick={() => { setBulkAction('ACTIVATE'); setShowBulkConfirm(true); }} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 transition-colors"><CheckCircle2 size={14}/> Activate</button>
+                 <button onClick={() => { setBulkAction('DEACTIVATE'); setShowBulkConfirm(true); }} className="px-4 py-2 bg-red-500 hover:bg-red-400 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 transition-colors"><Ban size={14}/> Deactivate</button>
                </div>
              </div>
            )}
@@ -278,13 +241,14 @@ export const VendorManagement = ({ user }: { user: UserProfile }) => {
            <Card className="p-0 overflow-hidden rounded-[32px] shadow-2xl border-none bg-white dark:bg-slate-900">
               <div className="p-8 bg-slate-50 dark:bg-slate-800/30 border-b border-slate-100 dark:border-slate-800 flex flex-col xl:flex-row gap-4 justify-between items-center">
                  <div className="w-full xl:w-80">
-                    <Input icon={Search} className="mb-0" placeholder="Search by Name, Email, ID..." value={search} onChange={(e:any)=>setSearch(e.target.value)} />
+                    {/* UI Enhancement: Updated placeholder to guide category-based searches */}
+                    <Input icon={Search} className="mb-0" placeholder="Search name, ID, category or hub..." value={search} onChange={(e:any)=>setSearch(e.target.value)} />
                  </div>
                  <div className="flex flex-wrap gap-3 w-full xl:w-auto items-center">
                     <div className="relative flex-1 xl:flex-none">
                        <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10" size={16}/>
                        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl pl-11 pr-10 py-3 text-[10px] font-black uppercase tracking-widest outline-none appearance-none cursor-pointer focus:border-indigo-500 shadow-sm transition-all min-w-[160px]">
-                        <option value="ALL">All Sectors</option>
+                        <option value="ALL">All Categories</option>
                         {availableCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                       </select>
                       <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" size={14} />
@@ -292,12 +256,12 @@ export const VendorManagement = ({ user }: { user: UserProfile }) => {
 
                     <div className="relative flex-1 xl:flex-none">
                        <ListFilter className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10" size={16}/>
-                       <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl pl-11 pr-10 py-3 text-[10px] font-black uppercase tracking-widest outline-none appearance-none cursor-pointer focus:border-indigo-500 shadow-sm transition-all min-w-[160px]">
-                        <option value="ALL">All Statuses</option>
+                       <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl pl-11 pr-10 py-3 text-[10px] font-black uppercase tracking-widest outline-none appearance-none cursor-pointer focus:border-indigo-500 shadow-sm transition-all min-w-[180px]">
+                        <option value="ALL">All Hub Statuses</option>
                         <option value="ACTIVE">Active Node</option>
-                        <option value="PENDING_APPROVAL">Pending Review</option>
-                        <option value="UNDER_REVIEW">Manual Audit</option>
-                        <option value="INACTIVE">Inactive / Offline</option>
+                        <option value="PENDING_APPROVAL">Pending Approval</option>
+                        <option value="UNDER_REVIEW">Under Audit</option>
+                        <option value="INACTIVE">Inactive / Revoked</option>
                       </select>
                       <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" size={14} />
                     </div>
@@ -310,7 +274,7 @@ export const VendorManagement = ({ user }: { user: UserProfile }) => {
                         : 'bg-white dark:bg-slate-950 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-indigo-300'
                       }`}
                     >
-                      <Banknote size={16}/> {showDuesOnly ? <span>Dues {'/'} 0</span> : 'Dues: Any'}
+                      <Banknote size={16}/> {showDuesOnly ? <span>Dues {'>'} 0</span> : 'Dues: Any'}
                     </button>
                  </div>
               </div>
@@ -325,12 +289,11 @@ export const VendorManagement = ({ user }: { user: UserProfile }) => {
                         </button>
                       </th>
                       <th className="px-6 py-4 cursor-pointer" onClick={() => handleSort('name')}>Entity Identity <ArrowUpDown size={12} className="inline ml-1"/></th>
-                      <th className="px-6 py-4 cursor-pointer" onClick={() => handleSort('rating')}>Trust Index <ArrowUpDown size={12} className="inline ml-1"/></th>
                       <th className="px-6 py-4">Classification</th>
-                      <th className="px-6 py-4">Spatial Node</th>
+                      <th className="px-6 py-4">Current Status</th>
                       <th className="px-6 py-4 text-right cursor-pointer" onClick={() => handleSort('dues')}>Outstanding Dues <ArrowUpDown size={12} className="inline ml-1"/></th>
-                      <th className="px-6 py-4 text-center">KYC Registry</th>
-                      <th className="px-6 py-4 text-right">Quick Response</th>
+                      <th className="px-6 py-4 text-center">KYC Audit</th>
+                      <th className="px-6 py-4 text-right">Operations</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
@@ -353,28 +316,24 @@ export const VendorManagement = ({ user }: { user: UserProfile }) => {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                           <button 
-                             onClick={() => { setRatingTarget(vendor); setShowRatingModal(true); }}
-                             className="flex items-center gap-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 p-1 rounded-lg transition-all"
-                           >
-                              <Star size={16} className="text-amber-500 fill-amber-500" />
-                              <span className="text-xs font-black text-slate-900 dark:text-white">{vendor.rating || 0}</span>
-                              <span className="text-[9px] text-slate-400">({vendor.ratingCount || 0})</span>
-                           </button>
-                        </td>
-                        <td className="px-6 py-4">
                           <span className="text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg">
                             {vendor.category}
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{vendor.market}</p>
-                          <p className="text-[9px] text-slate-400 font-medium">{vendor.city}</p>
+                          <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase border flex items-center justify-center gap-1.5 w-fit ${
+                            vendor.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
+                            vendor.status === 'PENDING_APPROVAL' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                            vendor.status === 'UNDER_REVIEW' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' :
+                            'bg-red-50 text-red-600 border-red-200'
+                          }`}>
+                            {vendor.status.replace('_', ' ')}
+                          </span>
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className={`px-3 py-1.5 rounded-xl inline-block transition-colors ${
                             vendor.rentDue + vendor.vatDue > 0 
-                            ? 'bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30' 
+                            ? 'bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 shadow-sm' 
                             : 'bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/20'
                           }`}>
                             {vendor.rentDue + vendor.vatDue > 0 ? (
@@ -401,30 +360,6 @@ export const VendorManagement = ({ user }: { user: UserProfile }) => {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex justify-end gap-2">
-                            {vendor.kycStatus === 'PENDING' && (
-                              <>
-                                <button 
-                                  onClick={() => handleKYCEscalate(vendor, 'APPROVED')}
-                                  className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[9px] font-black uppercase hover:bg-emerald-700 transition-colors"
-                                >
-                                  Authorize
-                                </button>
-                                <button 
-                                  onClick={() => handleKYCEscalate(vendor, 'REJECTED')}
-                                  className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-[9px] font-black uppercase hover:bg-red-700 transition-colors"
-                                >
-                                  Reject
-                                </button>
-                              </>
-                            )}
-                            {vendor.kycStatus === 'REJECTED' && (
-                               <button 
-                                 onClick={() => handleKYCEscalate(vendor, 'PENDING')}
-                                 className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[9px] font-black uppercase hover:bg-indigo-700 transition-colors"
-                               >
-                                 Restore
-                               </button>
-                            )}
                             <button className="text-slate-400 hover:text-indigo-600 p-2 transition-colors rounded-lg hover:bg-indigo-50"><MoreHorizontal size={18} /></button>
                           </div>
                         </td>
@@ -432,6 +367,37 @@ export const VendorManagement = ({ user }: { user: UserProfile }) => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+           </Card>
+        </div>
+      )}
+
+      {/* Bulk Action Confirmation Modal */}
+      {showBulkConfirm && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[300] flex items-center justify-center p-4">
+           <Card className="w-full max-w-md rounded-[40px] p-10 bg-white dark:bg-slate-900 border-none shadow-2xl relative overflow-hidden">
+              <div className={`absolute top-0 left-0 w-full h-1.5 ${bulkAction === 'ACTIVATE' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+              <div className="text-center">
+                 <div className={`w-20 h-20 rounded-[28px] flex items-center justify-center mx-auto mb-6 shadow-xl ${
+                    bulkAction === 'ACTIVATE' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                 }`}>
+                    {bulkAction === 'ACTIVATE' ? <UserCheck size={40}/> : <Ban size={40}/>}
+                 </div>
+                 <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight mb-2">Confirm Bulk Action</h3>
+                 <p className="text-slate-500 dark:text-slate-400 font-medium mb-8">
+                    You are about to <strong className={bulkAction === 'ACTIVATE' ? 'text-emerald-600' : 'text-red-600'}>{bulkAction?.toLowerCase()}</strong> {selectedVendorIds.size} vendor node{selectedVendorIds.size > 1 ? 's' : ''}. This will affect their trade status across the regional hub.
+                 </p>
+                 <div className="flex gap-4">
+                    <Button variant="secondary" onClick={() => setShowBulkConfirm(false)} className="flex-1 h-14 font-black uppercase text-xs">Abort Operation</Button>
+                    <Button 
+                      onClick={executeBulkAction} 
+                      className={`flex-1 h-14 border-none text-white font-black uppercase text-xs shadow-xl ${
+                        bulkAction === 'ACTIVATE' ? 'bg-emerald-600' : 'bg-red-600'
+                      }`}
+                    >
+                      Authorize Hub Sync
+                    </Button>
+                 </div>
               </div>
            </Card>
         </div>
@@ -465,10 +431,8 @@ export const VendorManagement = ({ user }: { user: UserProfile }) => {
               <Card className="p-0 overflow-hidden border-none shadow-xl rounded-[32px] bg-slate-50 dark:bg-slate-800/50">
                 <div className="relative h-56 bg-slate-200 dark:bg-slate-700 flex items-center justify-center group overflow-hidden">
                   <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
-                  {/* Decorative Map Pattern */}
                   <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(#4f46e5 1px, transparent 1px)', backgroundSize: '20px 20px', opacity: 0.1 }}></div>
                   
-                  {/* Map Pin Pulse Effect */}
                   <div className="absolute inset-0 flex items-center justify-center">
                      <div className="relative">
                         <div className="w-12 h-12 bg-red-500 rounded-full opacity-20 animate-ping absolute inset-0"></div>
@@ -535,55 +499,6 @@ export const VendorManagement = ({ user }: { user: UserProfile }) => {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Product SKU Modal */}
-      {showProductModal && (
-         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-            <Card className="w-full max-w-2xl rounded-[40px] p-10 bg-white dark:bg-slate-900 border-none shadow-2xl relative overflow-hidden">
-               <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
-               <button onClick={() => setShowProductModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 transition-colors"><X size={24}/></button>
-               <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-8 uppercase tracking-tight">{editingProduct ? 'Edit Product SKU' : 'New Product SKU'}</h3>
-               
-               <div className="space-y-6 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-                  <div className="grid grid-cols-2 gap-6">
-                     <Input label="Product Name *" value={productForm.name} onChange={(e:any) => setProductForm({...productForm, name: e.target.value})} />
-                     <Input label="Category *" value={productForm.category} onChange={(e:any) => setProductForm({...productForm, category: e.target.value})} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-6">
-                     <Input label="Price (UGX) *" type="number" value={productForm.price?.toString()} onChange={(e:any) => setProductForm({...productForm, price: Number(e.target.value)})} />
-                     <Input label="Stock Quantity *" type="number" value={productForm.stock?.toString()} onChange={(e:any) => setProductForm({...productForm, stock: Number(e.target.value)})} />
-                  </div>
-                  <Input label="Description" multiline value={productForm.description} onChange={(e:any) => setProductForm({...productForm, description: e.target.value})} />
-                  
-                  <div>
-                     <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest px-1 mb-3 block">SKU Visualization Registry</label>
-                     <div className="grid grid-cols-4 gap-4">
-                        {productForm.images?.map((img, idx) => (
-                           <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 group bg-slate-50 dark:bg-slate-950">
-                              <img src={img} alt="Product" className="w-full h-full object-cover" loading="lazy" decoding="async" />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                <button onClick={() => moveImage(idx, -1)} className="p-1 text-white hover:text-indigo-400 transition-colors"><ChevronLeft size={16}/></button>
-                                <button onClick={() => removeImage(idx)} className="p-1 text-white hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
-                                <button onClick={() => moveImage(idx, 1)} className="p-1 text-white hover:text-indigo-400 transition-colors"><ChevronRight size={16}/></button>
-                              </div>
-                           </div>
-                        ))}
-                        <button onClick={() => fileInputRef.current?.click()} className="aspect-square rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-slate-400 hover:text-indigo-600 hover:border-indigo-200 dark:hover:border-indigo-800 transition-colors bg-slate-50 dark:bg-slate-950/50">
-                           <ImageIcon size={24}/>
-                           <span className="text-[8px] font-black uppercase mt-2">Add Assets</span>
-                        </button>
-                        <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={handleImageUpload} />
-                     </div>
-                  </div>
-               </div>
-
-               <div className="pt-8 mt-4 border-t border-slate-100 dark:border-slate-800 flex gap-4">
-                  <Button variant="secondary" onClick={() => setShowProductModal(false)} className="flex-1 h-14 font-black uppercase text-xs">Cancel</Button>
-                  <Button onClick={handleProductSave} className="flex-[2] h-14 bg-indigo-600 border-none font-black uppercase text-xs text-white shadow-xl">Commit SKU Sync</Button>
-               </div>
-            </Card>
-         </div>
       )}
     </div>
   );
